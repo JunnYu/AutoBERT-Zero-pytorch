@@ -282,7 +282,7 @@ class AutoBertModelForMaskedLM(AutoBertPreTrainedModel):
             )
 
         if not return_dict:
-            output = (prediction_scores,) + outputs[2:]
+            output = (prediction_scores,) + outputs[1:]
             return (
                 ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
             )
@@ -507,7 +507,7 @@ class AutoBertForTokenClassification(AutoBertPreTrainedModel):
                 loss = loss_fct(logits.reshape(-1, self.num_labels), labels.reshape(-1))
 
         if not return_dict:
-            output = (logits,) + outputs[2:]
+            output = (logits,) + outputs[1:]
             return ((loss,) + output) if loss is not None else output
 
         return TokenClassifierOutput(
@@ -579,7 +579,7 @@ class AutoBertForQuestionAnswering(AutoBertPreTrainedModel):
             total_loss = (start_loss + end_loss) / 2
 
         if not return_dict:
-            output = (start_logits, end_logits) + outputs[2:]
+            output = (start_logits, end_logits) + outputs[1:]
             return ((total_loss,) + output) if total_loss is not None else output
 
         return QuestionAnsweringModelOutput(
