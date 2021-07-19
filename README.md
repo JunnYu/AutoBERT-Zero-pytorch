@@ -1,4 +1,4 @@
-# AutoBert_pytorch
+# AutoBERT-Zero-pytorch
 AutoBERT-Zero论文非官方代码，个人复现。
 
 # Paper
@@ -12,7 +12,7 @@ AutoBERT-Zero论文非官方代码，个人复现。
 
 # Install
 ```bash
-pip install git+https://github.com/JunnYu/AutoBert_pytorch
+pip install git+https://github.com/JunnYu/AutoBERT-Zero-pytorch
 or
 pip install autobert
 ```
