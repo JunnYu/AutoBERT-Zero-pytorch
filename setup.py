@@ -13,3 +13,8 @@ setup(
     keywords=["autobert", "pytorch"],
     install_requires=["transformers>=4.8.0"],
 )
+
+"""
+python setup.py sdist bdist_wheel
+twine upload dist/*
+"""
