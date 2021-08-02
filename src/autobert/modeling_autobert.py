@@ -12,7 +12,33 @@ from transformers.modeling_utils import PreTrainedModel
 from transformers.models.bert.modeling_bert import BertOnlyMLMHead
 
 from autobert.configuration_autobert import AutoBertConfig
-from autobert.module import AttentionEncoderLayer, LightConvEncoderLayer
+from autobert.module import (
+    AttentionEncoderLayer,
+    LightConvEncoderLayer,
+    ConvAttentionEncoderLayer,
+)
+
+from dataclasses import dataclass
+from typing import Optional, Tuple
+from transformers.file_utils import ModelOutput
+
+
+@dataclass
+class MaskedLMOutput(ModelOutput):
+    loss: Optional[torch.FloatTensor] = None
+    logits: torch.FloatTensor = None
+    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    attentions: Optional[Tuple[torch.FloatTensor]] = None
+    correct: torch.FloatTensor = None
+    total: torch.FloatTensor = None
+
+
+def compute_acc(logits, labels):
+    mask = labels != -100
+    p = logits.argmax(-1).masked_select(mask)
+    l = labels.masked_select(mask)
+    correct = (l == p).sum().float()
+    return correct, torch.tensor(l.numel(), device=correct.device)
 
 
 class AutoBertEmbeddings(nn.Module):
@@ -113,11 +139,11 @@ class AutoBertModel(AutoBertPreTrainedModel):
         self.embeddings = AutoBertEmbeddings(config)
         self.layer = nn.ModuleList([])
         for index in range(config.num_hidden_layers // 2):
-            self.layer.append(
-                LightConvEncoderLayer(
-                    config, kernel_size=config.kernel_size_list[index]
-                )
-            )
+            if config.conv_type == "light":
+                convcls = LightConvEncoderLayer
+            elif config.conv_type == "sdconv":
+                convcls = ConvAttentionEncoderLayer
+            self.layer.append(convcls(config, config.kernel_size_list[index]))
             self.layer.append(AttentionEncoderLayer(config, index))
 
         self.init_weights()
@@ -273,6 +299,8 @@ class AutoBertModelForMaskedLM(AutoBertPreTrainedModel):
         prediction_scores = self.cls(sequence_output)
 
         masked_lm_loss = None
+        correct = None
+        total = None
 
         if labels is not None:
             loss_fct = nn.CrossEntropyLoss()  # -100 index = padding token
@@ -280,9 +308,10 @@ class AutoBertModelForMaskedLM(AutoBertPreTrainedModel):
                 prediction_scores.reshape(-1, self.config.vocab_size),
                 labels.reshape(-1),
             )
+            correct, total = compute_acc(prediction_scores, labels)
 
         if not return_dict:
-            output = (prediction_scores,) + outputs[1:]
+            output = (prediction_scores,) + outputs[2:]
             return (
                 ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
             )
@@ -292,6 +321,8 @@ class AutoBertModelForMaskedLM(AutoBertPreTrainedModel):
             logits=prediction_scores,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
+            correct=correct,
+            total=total,
         )
 
 
@@ -507,7 +538,7 @@ class AutoBertForTokenClassification(AutoBertPreTrainedModel):
                 loss = loss_fct(logits.reshape(-1, self.num_labels), labels.reshape(-1))
 
         if not return_dict:
-            output = (logits,) + outputs[1:]
+            output = (logits,) + outputs[2:]
             return ((loss,) + output) if loss is not None else output
 
         return TokenClassifierOutput(
@@ -579,7 +610,7 @@ class AutoBertForQuestionAnswering(AutoBertPreTrainedModel):
             total_loss = (start_loss + end_loss) / 2
 
         if not return_dict:
-            output = (start_logits, end_logits) + outputs[1:]
+            output = (start_logits, end_logits) + outputs[2:]
             return ((total_loss,) + output) if total_loss is not None else output
 
         return QuestionAnsweringModelOutput(

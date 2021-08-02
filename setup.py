@@ -4,7 +4,7 @@ setup(
     name="autobert",
     package_dir={"": "src"},
     packages=find_packages("src"),
-    version="0.0.2",
+    version="0.1.0",
     license="MIT",
     description="AutoBert_pytorch",
     author="Jun Yu",

@@ -3,6 +3,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers.activations import ACT2FN
 
+from transformers.modeling_utils import apply_chunking_to_forward
+from transformers.models.bert.modeling_bert import (
+    BertIntermediate,
+    BertOutput,
+    BertSelfOutput,
+)
+
 
 def unfold1d(x, kernel_size, padding_l, pad_value=0):
     """unfold T x B x C to T x B x C x K"""
@@ -333,3 +340,135 @@ class LightConvEncoderLayer(nn.Module):
         x = residual + x
         x = self.layer_norms[1](residual + x)
         return (x, None) if output_attentions else (x,)
+
+
+class SeparableConv1D(nn.Module):
+    def __init__(self, config, input_filters, output_filters, kernel_size, **kwargs):
+        super().__init__()
+        self.depthwise = nn.Conv1d(
+            input_filters,
+            input_filters,
+            kernel_size=kernel_size,
+            groups=input_filters,
+            padding=kernel_size // 2,
+            bias=False,
+        )
+        self.pointwise = nn.Conv1d(
+            input_filters, output_filters, kernel_size=1, bias=False
+        )
+        self.bias = nn.Parameter(torch.zeros(output_filters, 1))
+
+        self.depthwise.weight.data.normal_(mean=0.0, std=config.initializer_range)
+        self.pointwise.weight.data.normal_(mean=0.0, std=config.initializer_range)
+
+    def forward(self, hidden_states):
+        x = self.depthwise(hidden_states.transpose(1, 2))
+        x = self.pointwise(x)
+        x += self.bias
+        return x.transpose(1, 2)
+
+
+class ConvBertAttention(nn.Module):
+    def __init__(self, config, conv_kernel_size=0):
+        super().__init__()
+        self.num_attention_heads = config.num_attention_heads
+        self.attention_head_size = config.hidden_size // self.num_attention_heads
+        self.all_head_size = self.num_attention_heads * self.attention_head_size
+
+        self.query = nn.Linear(config.hidden_size, self.all_head_size)
+
+        self.conv_kernel_size = conv_kernel_size
+        self.key_conv_attn_layer = SeparableConv1D(
+            config, config.hidden_size, self.all_head_size, self.conv_kernel_size
+        )
+        self.conv_kernel_layer = nn.Linear(
+            self.all_head_size, self.num_attention_heads * self.conv_kernel_size
+        )
+        self.conv_out_layer = nn.Linear(config.hidden_size, self.all_head_size)
+
+        self.unfold1d = nn.Unfold(
+            kernel_size=[self.conv_kernel_size, 1],
+            padding=[(self.conv_kernel_size - 1) // 2, 0],
+        )
+
+    def forward(
+        self, hidden_states, attention_mask=None, output_attentions=None
+    ):
+        bs = hidden_states.size(0)
+        mixed_query_layer = self.query(hidden_states)
+        mixed_key_conv_attn_layer = self.key_conv_attn_layer(hidden_states)
+        conv_attn_layer = mixed_key_conv_attn_layer * mixed_query_layer
+
+        # prepare conv_kernel_layer
+        conv_kernel_layer = self.conv_kernel_layer(conv_attn_layer)
+        conv_kernel_layer = conv_kernel_layer.reshape(-1, self.conv_kernel_size, 1)
+        conv_kernel_layer = conv_kernel_layer.softmax(1)
+
+        # prepare conv_out_layer
+        conv_out_layer = self.conv_out_layer(hidden_states).transpose(1, 2)[..., None]
+
+        conv_out_layer = self.unfold1d(conv_out_layer)
+        conv_out_layer = conv_out_layer.transpose(1, 2).reshape(
+            -1, self.attention_head_size, self.conv_kernel_size
+        )
+
+        conv_out = torch.matmul(conv_out_layer, conv_kernel_layer).reshape(
+            bs, -1, self.all_head_size
+        )
+        
+        return conv_out,conv_kernel_layer if output_attentions else conv_out
+
+
+class ConvAttentionEncoderLayer(nn.Module):
+    def __init__(self, config, kernel_size):
+        super().__init__()
+        self.chunk_size_feed_forward = config.chunk_size_feed_forward
+        self.seq_len_dim = 1
+        self.conv_attention = ConvBertAttention(config, kernel_size)
+        self.conv_output = BertSelfOutput(config)
+        self.intermediate = BertIntermediate(config)
+        self.intermediate_output = BertOutput(config)
+
+    def forward(
+        self,
+        hidden_states,
+        attention_mask=None,
+        output_attentions=False,
+    ):
+        self_attention_outputs = self.conv_attention(
+            hidden_states, attention_mask, output_attentions=output_attentions
+        )
+        attention_output = self.conv_output(self_attention_outputs[0], hidden_states)
+
+        layer_output = apply_chunking_to_forward(
+            self.feed_forward_chunk,
+            self.chunk_size_feed_forward,
+            self.seq_len_dim,
+            attention_output,
+        )
+
+        outputs = self_attention_outputs[1:]
+
+        outputs = (layer_output,) + outputs
+
+        return outputs
+
+    def feed_forward_chunk(self, attention_output):
+        intermediate_output = self.intermediate(attention_output)
+        layer_output = self.intermediate_output(intermediate_output, attention_output)
+        return layer_output
+
+
+if __name__ == "__main__":
+    from easydict import EasyDict as Config
+
+    config = Config(
+        conv_kernel_size=7,
+        hidden_size=768,
+        num_attention_heads=12,
+        initializer_range=0.02,
+    )
+    model = ConvBertAttention(config)
+    x = torch.rand(2, 16, 768)
+    o = model(x).shape
+    print(o)

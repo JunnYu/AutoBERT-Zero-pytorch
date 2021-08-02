@@ -26,6 +26,7 @@ class AutoBertConfig(PretrainedConfig):
         use_glu=True,
         weight_softmax=False,
         kernel_size_list=[65, 9, 3, 7, 7, 3],
+        conv_type="light",
         **kwargs
     ):
         super().__init__(pad_token_id=pad_token_id, **kwargs)
@@ -45,4 +46,5 @@ class AutoBertConfig(PretrainedConfig):
         self.gradient_checkpointing = gradient_checkpointing
         self.use_glu = use_glu
         self.weight_softmax = weight_softmax
+        self.conv_type = conv_type
         self.kernel_size_list = kernel_size_list
