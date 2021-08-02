@@ -22,6 +22,7 @@ pip install autobert
 https://wandb.ai/junyu/autobert-small/runs/2flfy8gx
 ## light
 https://wandb.ai/junyu/autobert-small/runs/howc6tps
+
 感觉small模型训练出来效果不怎么样，不知道是哪里出错了。
 
 # results
