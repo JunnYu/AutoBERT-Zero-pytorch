@@ -30,7 +30,9 @@ https://wandb.ai/junyu/autobert-small/runs/howc6tps
 <p align="center">
     <img src="figure/result.jpg" width="100%" />
 </p>
+
 # Usage
+
 ```python
 import torch
 from transformers import BertTokenizerFast
@@ -69,4 +71,5 @@ for model in ["junnyu/autobert-small-light","junnyu/autobert-small-sdconv"]:
     print(pt_outputs_sentence.strip())
 # light:  beijing is the capital of [ china+0.1801 || india+0.0273 || america+0.0181 || japan+0.0166 || us+0.0143 ] .
 # sdconv: beijing is the capital of [ china+0.1533 || india+0.054 || delhi+0.0414 || beijing+0.0389 || london+0.022 ] .
+
 ```
