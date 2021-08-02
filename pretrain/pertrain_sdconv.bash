@@ -1,0 +1,21 @@
+python run_mlm.py \
+    --config_name bert-base-uncased \
+    --conv_type sdconv \
+    --tokenizer_name bert-base-uncased \
+    --dataset_name openwebtext \
+    --output_dir ./autobert-small-light \
+    --do_train \
+    --dataloader_num_workers 6 \
+    --per_device_train_batch_size 48 \
+    --per_device_eval_batch_size 64 \
+    --gradient_accumulation_steps 8 \
+    --warmup_steps 2000 \
+    --save_strategy steps \
+    --save_steps 2000 \
+    --max_steps 250000 \
+    --fp16 \
+    --logging_steps 100 \
+    --preprocessing_num_workers 8 \
+    --learning_rate 1e-4 \
+    --weight_decay 0.01
+
