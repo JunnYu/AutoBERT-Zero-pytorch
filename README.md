@@ -18,9 +18,17 @@ pip install autobert
 ```
 
 # Wandb Logs
-https://wandb.ai/junyu/huggingface/runs/howc6tps?workspace=user-junyu
+## sdconv
+https://wandb.ai/junyu/autobert-small/runs/2flfy8gx
+## light
+https://wandb.ai/junyu/autobert-small/runs/howc6tps
 感觉small模型训练出来效果不怎么样，不知道是哪里出错了。
 
+# results
+
+<p align="center">
+    <img src="figure/result.jpg" width="100%" />
+</p>
 # Usage
 ```python
 import torch
@@ -58,5 +66,6 @@ for model in ["junnyu/autobert-small-light","junnyu/autobert-small-sdconv"]:
             )
 
     print(pt_outputs_sentence.strip())
-
+# light:  beijing is the capital of [ china+0.1801 || india+0.0273 || america+0.0181 || japan+0.0166 || us+0.0143 ] .
+# sdconv: beijing is the capital of [ china+0.1533 || india+0.054 || delhi+0.0414 || beijing+0.0389 || london+0.022 ] .
 ```
